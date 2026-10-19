@@ -16,7 +16,7 @@ jobs:
       mysql:
         image: mysql:8.0
         env:
-          MYSQL_ROOT_PASSWORD: rootpassword
+          MYSQL_ROOT_PASSWORD: Bhargavi1998
           MYSQL_DATABASE: api_testing_db
         ports:
           - 3306:3306
@@ -30,7 +30,7 @@ jobs:
       DB_HOST: 127.0.0.1
       DB_PORT: 3306
       DB_USER: root
-      DB_PASSWORD: rootpassword
+      DB_PASSWORD: Bhargavi1998
       DB_NAME: api_testing_db
 
     steps:
