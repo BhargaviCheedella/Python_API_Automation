@@ -1,38 +1,25 @@
-name: Python API Tests with MySQL
+name: Python API Tests with MySQL (CI/CD)
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
   pull_request:
-    branches: [main]
+    branches:
+      - main
   workflow_dispatch:
 
+env:
+  DB_HOST: 127.0.0.1
+  DB_PORT: 3306
+  DB_USER: root
+  DB_PASSWORD: rootpassword
+  DB_NAME: api_testing_db
+
 jobs:
+  # ---------------------------- CI ----------------------------
   api-tests:
     runs-on: ubuntu-latest
-
-    services:
-      mysql:
-        image: mysql:8.0
-        env:
-          MYSQL_ROOT_PASSWORD: rootpassword
-          MYSQL_DATABASE: api_testing_db
-        ports:
-          - 3306:3306
-        volumes:
-          - ./sql/init.sql:/docker-entrypoint-initdb.d/01-init.sql
-        options: >-
-          --health-cmd="mysqladmin ping -h 127.0.0.1 -prootpassword"
-          --health-interval=10s
-          --health-timeout=5s
-          --health-retries=10
-
-    env:
-      DB_HOST: 127.0.0.1
-      DB_PORT: 3306
-      DB_USER: root
-      DB_PASSWORD: rootpassword
-      DB_NAME: api_testing_db
 
     steps:
       - name: Checkout repository
@@ -42,11 +29,41 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: pip
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           python -m pip install requests pytest mysql-connector-python python-dotenv pytest-html
+
+      - name: Start MySQL (preinstalled on runner)
+        run: |
+          sudo systemctl start mysql.service
+          # Wait until MySQL accepts connections (default runner root password is "root")
+          for i in {1..30}; do
+            if mysqladmin ping -h 127.0.0.1 -uroot -proot --silent; then
+              echo "MySQL is up"
+              break
+            fi
+            echo "Waiting for MySQL... ($i)"
+            sleep 2
+          done
+
+      - name: Configure MySQL root password and database
+        run: |
+          mysql -h 127.0.0.1 -uroot -proot -e "
+            ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '${DB_PASSWORD}';
+            FLUSH PRIVILEGES;
+            CREATE DATABASE IF NOT EXISTS ${DB_NAME};
+          "
+
+      - name: Initialize database schema
+        run: |
+          if [ -f sql/init.sql ]; then
+            mysql -h 127.0.0.1 -u"${DB_USER}" -p"${DB_PASSWORD}" "${DB_NAME}" < sql/init.sql
+          else
+            echo "sql/init.sql not found, skipping"
+          fi
 
       - name: Run API tests
         run: |
@@ -59,3 +76,20 @@ jobs:
           name: api-test-report
           path: report.html
           if-no-files-found: warn
+
+  # ---------------------------- CD ----------------------------
+  deploy:
+    needs: api-tests
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Deploy
+        run: |
+          echo "Deploying application..."
+          # Replace with your real deploy step, e.g.:
+          # ssh user@server "cd /app && git pull && systemctl restart api"
